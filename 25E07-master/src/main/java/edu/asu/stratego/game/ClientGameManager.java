@@ -28,7 +28,11 @@ import javafx.animation.FadeTransition;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.layout.StackPane;
 import javafx.util.Duration;
+import java.awt.Point;
 
 /**
  * Task to handle the Stratego game on the client-side.
@@ -284,12 +288,27 @@ public class ClientGameManager implements Runnable {
 
     private void playGame() {
         initializeGameBoard();
+        addAbandonButton(); // Añadir el botón de abandono
 
         // Main loop (when playing)
         while (Game.getStatus() == GameStatus.IN_PROGRESS) {
 
             try {
                 handleTurn();
+                // Verificar si el juego fue abandonado
+                if (Game.getStatus() == GameStatus.RED_DISCONNECTED ||
+                        Game.getStatus() == GameStatus.BLUE_DISCONNECTED) {
+                    logger.info("Game was abandoned, returning to main menu");
+                    Platform.runLater(this::showMainMenu);
+                    return;
+                }
+
+                // Verificar si move es null (abandono)
+                if (Game.getMove() == null) {
+                    logger.info("Move is null, game abandoned");
+                    Platform.runLater(this::showMainMenu);
+                    return;
+                }
                 processAttackMove();
                 updateBoardAndGUI();
             } catch (ClassNotFoundException | IOException | InterruptedException e) {
@@ -307,6 +326,43 @@ public class ClientGameManager implements Runnable {
         }
 
         revealAll();
+    }
+
+    private void addAbandonButton() {
+        Platform.runLater(() -> {
+            try {
+                // Crear botón de abandono
+                javafx.scene.control.Button abandonButton = new javafx.scene.control.Button("Abandon Game");
+                abandonButton.setStyle(
+                        "-fx-font-size: 14px; -fx-padding: 5 10; -fx-background-color: #ff4444; -fx-text-fill: white;");
+                abandonButton.setOnAction(e -> {
+                    logger.info("Abandon button clicked");
+                    // Enviar señal de abandono al servidor
+                    try {
+                        if (toServer != null) {
+                            // Enviamos un movimiento especial que indica abandono
+                            toServer.writeObject("ABANDON"); // Señal clara de abandono
+                            toServer.flush();
+
+                        }
+                    } catch (IOException ex) {
+                        logger.log(Level.SEVERE, "Error sending abandon signal", ex);
+                    }
+                    Platform.runLater(this::showMainMenu);
+
+                });
+
+                // Posicionar el botón en la esquina superior derecha
+                StackPane root = BoardScene.getRootPane();
+                StackPane.setAlignment(abandonButton, Pos.TOP_RIGHT);
+                StackPane.setMargin(abandonButton, new Insets(10, 10, 0, 0));
+                root.getChildren().add(abandonButton);
+
+                logger.info("Abandon button added to UI");
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Error adding abandon button", e);
+            }
+        });
     }
 
     private void initializeGameBoard() {
@@ -333,21 +389,34 @@ public class ClientGameManager implements Runnable {
     }
 
     private void handleTurn() throws InterruptedException, ClassNotFoundException, IOException {
-        // Get turn color from server.
-        Game.setTurn((PieceColor) fromServer.readObject());
+        // Get message from server
+        Object received = fromServer.readObject();
 
-        // If the turn is the client's, set move status to none selected.
-        if (Game.getPlayer().getColor() == Game.getTurn())
+        // Check if it's a game status (like abandon)
+        if (received instanceof GameStatus) {
+            GameStatus status = (GameStatus) received;
+            if (status == GameStatus.RED_DISCONNECTED || status == GameStatus.BLUE_DISCONNECTED) {
+                Game.setStatus(status);
+                return;
+            }
+        }
+
+        // Otherwise it should be the turn color
+        Game.setTurn((PieceColor) received);
+
+        // If the turn is the client's, set move status to none selected
+        if (Game.getPlayer().getColor() == Game.getTurn()) {
             Game.setMoveStatus(MoveStatus.NONE_SELECTED);
-        else
+        } else {
             Game.setMoveStatus(MoveStatus.OPP_TURN);
+        }
 
-        // Notify turn indicator.
+        // Notify turn indicator
         synchronized (BoardTurnIndicator.getTurnIndicatorTrigger()) {
             BoardTurnIndicator.getTurnIndicatorTrigger().notify();
         }
 
-        // Send move to the server.
+        // Send move to the server if it's our turn
         if (Game.getPlayer().getColor() == Game.getTurn() && Game.getMoveStatus() != MoveStatus.SERVER_VALIDATION) {
             synchronized (sendMove) {
                 sendMove.wait();
@@ -356,8 +425,13 @@ public class ClientGameManager implements Runnable {
             }
         }
 
-        // Receive move from the server.
-        Game.setMove((Move) fromServer.readObject());
+        // Receive move from the server
+        received = fromServer.readObject();
+        if (received instanceof Move) {
+            Game.setMove((Move) received);
+        } else if (received instanceof GameStatus) {
+            Game.setStatus((GameStatus) received);
+        }
     }
 
     private void processAttackMove() throws InterruptedException, ClassNotFoundException, IOException {

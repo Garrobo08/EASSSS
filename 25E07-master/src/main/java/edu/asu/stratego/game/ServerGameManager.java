@@ -45,6 +45,8 @@ public class ServerGameManager implements Runnable {
     private Socket socketOne;
     private Socket socketTwo;
 
+    private volatile boolean gameAbandoned = false;
+
     RulesFactory rulesFactory = new OriginalRulesFactory();
     GameRules gameRules;
 
@@ -202,6 +204,31 @@ public class ServerGameManager implements Runnable {
         }
     }
 
+    public synchronized void abandonGame() {
+        if (gameAbandoned)
+            return;
+
+        logger.info(session + "Game abandoned by players");
+        gameAbandoned = true;
+
+        try {
+            GameStatus abandonStatus = (playerOne.getColor() == PieceColor.RED) ? GameStatus.RED_DISCONNECTED
+                    : GameStatus.BLUE_DISCONNECTED;
+
+            // Enviar estado de abandono a ambos jugadores
+            toPlayerOne.writeObject(abandonStatus);
+            toPlayerTwo.writeObject(abandonStatus);
+
+            // Forzar flush de los streams
+            toPlayerOne.flush();
+            toPlayerTwo.flush();
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, session + "Error sending abandon status", e);
+        } finally {
+            closeConnections();
+        }
+    }
+
     /**
      * Main game loop.
      * Receives moves from players in turn, processes them, checks for a win
@@ -209,10 +236,15 @@ public class ServerGameManager implements Runnable {
      * and sends the result back to both players.
      */
     private void playGame() {
-        while (true) {
+        while (!gameAbandoned) {
             try {
                 // Get the move from the player based on the current turn
                 move = getMoveFromPlayer(turn);
+
+                // Add this check after getting the move
+                if (move == null || gameAbandoned) {
+                    break;
+                }
 
                 // Initialize the moves that will be sent to each player
                 Move moveToPlayerOne = new Move(), moveToPlayerTwo = new Move();
@@ -222,6 +254,10 @@ public class ServerGameManager implements Runnable {
 
                 // Check if someone has won the game
                 GameStatus winCondition = checkWinCondition();
+                if (winCondition != GameStatus.IN_PROGRESS || gameAbandoned) {
+                    sendMoveToPlayers(moveToPlayerOne, moveToPlayerTwo, winCondition);
+                    break;
+                }
 
                 // Determine winner and award points accordingly
                 PlayerService service = new PlayerService();
@@ -252,6 +288,7 @@ public class ServerGameManager implements Runnable {
                 return;
             }
         }
+        closeConnections();
 
     }
 
@@ -366,15 +403,21 @@ public class ServerGameManager implements Runnable {
         toPlayerOne.writeObject(turn);
         toPlayerTwo.writeObject(turn);
 
-        // Get turn from client
-        if (playerOne.getColor() == turn) {
-            move = (Move) fromPlayerOne.readObject();
-            move.setStart(CoordinateUtils.rotate180(move.getStart()));
-            move.setEnd(CoordinateUtils.rotate180(move.getEnd()));
-        } else {
-            move = (Move) fromPlayerTwo.readObject();
+        // Get move from client
+        Object received = (playerOne.getColor() == turn) ? fromPlayerOne.readObject() : fromPlayerTwo.readObject();
+
+        // Check if it's an abandon signal
+        if (received instanceof String && ((String) received).equals("ABANDON")) {
+            abandonGame();
+            return null;
         }
 
+        // Process normal move
+        move = (Move) received;
+        if (playerOne.getColor() == turn) {
+            move.setStart(CoordinateUtils.rotate180(move.getStart()));
+            move.setEnd(CoordinateUtils.rotate180(move.getEnd()));
+        }
         return move;
     }
 

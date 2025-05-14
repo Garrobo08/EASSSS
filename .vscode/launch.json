@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-Server<stratego>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "edu.asu.stratego.Server",
+            "projectName": "stratego",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}
