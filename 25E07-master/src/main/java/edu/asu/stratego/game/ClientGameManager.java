@@ -30,6 +30,7 @@ import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.control.Button;
 import javafx.scene.layout.StackPane;
 import javafx.util.Duration;
 import java.awt.Point;
@@ -92,6 +93,7 @@ public class ClientGameManager implements Runnable {
      * @see edu.asu.stratego.gui.ConnectionScene.ConnectToServer
      */
     private void connectToServer() {
+
         ConnectionScene.ConnectToServer connectToServer = new ConnectionScene.ConnectToServer();
         Thread serverConnectThread = new Thread(connectToServer);
         serverConnectThread.setDaemon(true);
@@ -111,6 +113,22 @@ public class ClientGameManager implements Runnable {
                         this::connectToServer,
                         Platform::exit);
             });
+        }
+    }
+
+    private void closeExistingConnection() {
+        try {
+            if (fromServer != null) {
+                fromServer.close();
+                fromServer = null;
+            }
+            if (toServer != null) {
+                toServer.close();
+                toServer = null;
+            }
+            ClientSocket.getInstance().close();
+        } catch (IOException e) {
+            logger.log(Level.WARNING, "Error al cerrar conexión existente", e);
         }
     }
 
@@ -297,16 +315,15 @@ public class ClientGameManager implements Runnable {
                 handleTurn();
                 // Verificar si el juego fue abandonado
                 if (Game.getStatus() == GameStatus.RED_DISCONNECTED ||
-                        Game.getStatus() == GameStatus.BLUE_DISCONNECTED) {
+                        Game.getStatus() == GameStatus.BLUE_DISCONNECTED || Game.getMove() == null) {
                     logger.info("Game was abandoned, returning to main menu");
-                    Platform.runLater(this::showMainMenu);
-                    return;
-                }
-
-                // Verificar si move es null (abandono)
-                if (Game.getMove() == null) {
-                    logger.info("Move is null, game abandoned");
-                    Platform.runLater(this::showMainMenu);
+                    Platform.runLater(() -> {
+                        // Limpiar la escena antes de volver al menú
+                        BoardScene.getRootPane().getChildren().clear();
+                        showMainMenu();
+                        // Reiniciar los streams por si acaso
+                        closeExistingConnection();
+                    });
                     return;
                 }
                 processAttackMove();
@@ -331,6 +348,15 @@ public class ClientGameManager implements Runnable {
     private void addAbandonButton() {
         Platform.runLater(() -> {
             try {
+                // Posicionar el botón en la esquina superior derecha
+                StackPane root = BoardScene.getRootPane();
+
+                // Verificar si el botón ya existe
+                if (root.getChildren().stream().anyMatch(node -> node instanceof Button &&
+                        ((Button) node).getText().equals("Abandon Game"))) {
+                    return;
+                }
+
                 // Crear botón de abandono
                 javafx.scene.control.Button abandonButton = new javafx.scene.control.Button("Abandon Game");
                 abandonButton.setStyle(
@@ -352,8 +378,6 @@ public class ClientGameManager implements Runnable {
 
                 });
 
-                // Posicionar el botón en la esquina superior derecha
-                StackPane root = BoardScene.getRootPane();
                 StackPane.setAlignment(abandonButton, Pos.TOP_RIGHT);
                 StackPane.setMargin(abandonButton, new Insets(10, 10, 0, 0));
                 root.getChildren().add(abandonButton);
