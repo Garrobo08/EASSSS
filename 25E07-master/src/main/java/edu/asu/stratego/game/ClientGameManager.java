@@ -208,7 +208,9 @@ public class ClientGameManager implements Runnable {
                 mainMenuScene = new MainMenuScene();
                 mainMenuScene.setNewGameAction(() -> {
                     new Thread(() -> {
+                        Game.resetGame();
                         waitForOpponent();
+
                         setupBoard();
                         playGame();
                     }).start();
@@ -378,6 +380,7 @@ public class ClientGameManager implements Runnable {
             } else if (Game.getStatus() == GameStatus.RED_DISCONNECTED ||
                     Game.getStatus() == GameStatus.BLUE_DISCONNECTED) {
                 message = "El oponente ha abandonado la partida";
+                clearLocalBoard();
             }
 
             AlertUtils.showGameEndAlert(
@@ -386,13 +389,32 @@ public class ClientGameManager implements Runnable {
                     "¿Quieres jugar otra partida?",
                     () -> {
                         closeExistingConnection(); // 🔥 Matamos el socket
-                        Game.resetGame(); // 🔄 Reiniciamos el estado del juego
-                        Platform.runLater(() -> showMainMenu()); // Volvemos al menú
+                        Game.resetGame(); // 🔄 Reiniciamos el estado del juegoo
+                        Platform.runLater(this::showMainMenu); // Volvemos al menú
                     },
                     Platform::exit);
 
             // Limpiar la escena del juego
             BoardScene.getRootPane().getChildren().clear();
+        });
+    }
+
+    /**
+     * Limpia visualmente y en memoria el tablero del jugador local.
+     */
+    private void clearLocalBoard() {
+        Platform.runLater(() -> {
+            for (int row = 0; row < 10; row++) {
+                for (int col = 0; col < 10; col++) {
+                    ClientSquare square = Game.getBoard().getSquare(row, col);
+
+                    // 🔄 Quitar piezas visuales
+                    square.getPiecePane().setPiece(null);
+
+                    // 🔄 Quitar piezas en el modelo
+                    square.setPiece(null);
+                }
+            }
         });
     }
 

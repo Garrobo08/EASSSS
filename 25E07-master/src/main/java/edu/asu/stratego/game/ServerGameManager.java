@@ -87,38 +87,71 @@ public class ServerGameManager implements Runnable {
         playGame();
     }
 
+    private void resetServerBoard() {
+        this.board = new ServerBoard(); // 🔄 Crear un nuevo tablero vacío
+        this.playerOneFlag = null;
+        this.playerTwoFlag = null;
+        this.turn = (Math.random() < 0.5) ? PieceColor.RED : PieceColor.BLUE;
+        this.move = null;
+        logger.info(session + "Server board has been reset.");
+    }
+
     /**
      * Establish IO object streams to facilitate communication between the
      * client and server.
      */
     private void createIOStreams() {
         try {
-            if (socketOne.isClosed() || socketTwo.isClosed()) {
-                logger.log(Level.SEVERE, "Sockets are closed, cannot create streams.");
+            logger.info(session + "Attempting to create IO Streams...");
+
+            // 🔍 Verificar el estado de los sockets
+            if (socketOne == null || socketTwo == null) {
+                logger.severe(session + "One or both sockets are null. Cannot create streams.");
                 return;
             }
-            // NOTE: ObjectOutputStreams must be constructed before the
-            // ObjectInputStreams so as to prevent a remote deadlock
+
+            if (socketOne.isClosed() || socketTwo.isClosed()) {
+                logger.severe(session + "One or both sockets are already closed. Cannot create streams.");
+                return;
+            }
+
+            // 🔄 Crear los streams
             if (toPlayerOne == null) {
+                logger.info(session + "Creating ObjectOutputStream for Player One...");
                 toPlayerOne = new ObjectOutputStream(socketOne.getOutputStream());
                 toPlayerOne.flush();
+            } else {
+                logger.warning(session + "ObjectOutputStream for Player One already exists.");
             }
+
             if (fromPlayerOne == null) {
+                logger.info(session + "Creating ObjectInputStream for Player One...");
                 fromPlayerOne = new ObjectInputStream(socketOne.getInputStream());
+            } else {
+                logger.warning(session + "ObjectInputStream for Player One already exists.");
             }
+
             if (toPlayerTwo == null) {
+                logger.info(session + "Creating ObjectOutputStream for Player Two...");
                 toPlayerTwo = new ObjectOutputStream(socketTwo.getOutputStream());
                 toPlayerTwo.flush();
+            } else {
+                logger.warning(session + "ObjectOutputStream for Player Two already exists.");
             }
+
             if (fromPlayerTwo == null) {
+                logger.info(session + "Creating ObjectInputStream for Player Two...");
                 fromPlayerTwo = new ObjectInputStream(socketTwo.getInputStream());
+            } else {
+                logger.warning(session + "ObjectInputStream for Player Two already exists.");
             }
+
+            logger.info(session + "Streams successfully created.");
+
         } catch (IOException e) {
-            logger.log(Level.SEVERE, "Error establishing communication streams.", e);
-            // Clean up resources if streams or sockets were created before the exception
-            closeConnections();
-            // Finish the thread execution
-            Thread.currentThread().interrupt();
+            logger.log(Level.SEVERE, session + "Error establishing communication streams.", e);
+            closeConnections(); // 🔴 Cerramos correctamente para evitar "sockets huérfanos".
+            Thread.currentThread().interrupt(); // 🔴 Interrumpimos el hilo para evitar bucles infinitos.
         }
     }
 
@@ -151,13 +184,24 @@ public class ServerGameManager implements Runnable {
      */
     private void exchangePlayers() {
         try {
+            logger.info(session + "Attempting to exchange players...");
+
+            // 🔍 Verificar los streams antes de leer
             if (fromPlayerOne == null || fromPlayerTwo == null) {
-                logger.log(Level.SEVERE, "Input streams are null. Cannot exchange players.");
+                logger.log(Level.SEVERE, session + "Input streams are null. Cannot exchange players.");
                 return;
             }
-            playerOne = (Player) fromPlayerOne.readObject();
-            playerTwo = (Player) fromPlayerTwo.readObject();
 
+            // 🔄 Leer los jugadores
+            logger.info(session + "Reading Player One from input stream...");
+            playerOne = (Player) fromPlayerOne.readObject();
+            logger.info(session + "Player One received: " + playerOne.getNickname());
+
+            logger.info(session + "Reading Player Two from input stream...");
+            playerTwo = (Player) fromPlayerTwo.readObject();
+            logger.info(session + "Player Two received: " + playerTwo.getNickname());
+
+            // 🔄 Asignar colores
             if (Math.random() < 0.5) {
                 playerOne.setColor(PieceColor.RED);
                 playerTwo.setColor(PieceColor.BLUE);
@@ -166,8 +210,15 @@ public class ServerGameManager implements Runnable {
                 playerTwo.setColor(PieceColor.RED);
             }
 
+            logger.info(session + "Assigned colors: " + playerOne.getColor() + " to " + playerOne.getNickname() +
+                    ", " + playerTwo.getColor() + " to " + playerTwo.getNickname());
+
+            // 🔄 Enviar información de los oponentes
             toPlayerOne.writeObject(playerTwo);
             toPlayerTwo.writeObject(playerOne);
+
+            logger.info(session + "Player information exchanged successfully.");
+
         } catch (ClassNotFoundException e) {
             logger.log(Level.SEVERE, session + "Error receiving player information: Class not found.", e);
         } catch (IOException e) {
@@ -182,8 +233,18 @@ public class ServerGameManager implements Runnable {
      */
     private void exchangeSetup() {
         try {
+            // 🔍 Verificar que los streams no son nulos antes de leer
+            if (fromPlayerOne == null || fromPlayerTwo == null) {
+                logger.log(Level.SEVERE, session + "Error during setup exchange: Streams are null.");
+                return;
+            }
             SetupBoard setupBoardOne = (SetupBoard) fromPlayerOne.readObject();
             SetupBoard setupBoardTwo = (SetupBoard) fromPlayerTwo.readObject();
+
+            if (setupBoardOne == null || setupBoardTwo == null) {
+                logger.log(Level.SEVERE, session + "Error during setup exchange: Setup boards are null.");
+                return;
+            }
 
             // Register pieces on the server board
             for (int row = 0; row < 4; ++row) {
@@ -233,16 +294,17 @@ public class ServerGameManager implements Runnable {
             GameStatus abandonStatus = (playerOne.getColor() == PieceColor.RED) ? GameStatus.RED_DISCONNECTED
                     : GameStatus.BLUE_DISCONNECTED;
 
-            // Enviar estado de abandono a ambos jugadores
             toPlayerOne.writeObject(abandonStatus);
             toPlayerTwo.writeObject(abandonStatus);
 
-            // Forzar flush de los streams
             toPlayerOne.flush();
             toPlayerTwo.flush();
+
         } catch (IOException e) {
             logger.log(Level.SEVERE, session + "Error sending abandon status", e);
         } finally {
+            // 🔄 Limpiar el tablero y cerrar conexiones
+            resetServerBoard();
             closeConnections();
         }
     }
