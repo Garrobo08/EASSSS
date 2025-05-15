@@ -2,6 +2,7 @@ package edu.asu.stratego.game;
 
 import edu.asu.stratego.game.board.ClientBoard;
 import edu.asu.stratego.game.pieces.PieceColor;
+import jakarta.persistence.ManyToOne;
 
 /**
  * Contains information about the Stratego game, which is shared between the
@@ -21,6 +22,8 @@ public class Game {
     private static GameStatus status;
     private static PieceColor turn;
     private static ClientBoard board;
+    @ManyToOne
+    private Player currentPlayer;
 
     /**
      * Initializes data fields for a new game.
@@ -134,6 +137,14 @@ public class Game {
      */
     public static void setMoveStatus(MoveStatus moveStatus) {
         Game.moveStatus = moveStatus;
+    }
+
+    public Player getCurrentPlayer() {
+        return currentPlayer;
+    }
+
+    public void setCurrentPlayer(Player player) {
+        this.currentPlayer = player;
     }
 
     /**
