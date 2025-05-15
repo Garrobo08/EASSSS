@@ -334,6 +334,7 @@ public class ClientGameManager implements Runnable {
     private void playGame() {
         initializeGameBoard();
         addAbandonButton(); // Añadir el botón de abandono
+        Game.setStartTime(LocalDateTime.now());
 
         // Main loop (when playing)
         while (Game.getStatus() == GameStatus.IN_PROGRESS) {
@@ -432,7 +433,7 @@ public class ClientGameManager implements Runnable {
             // 2. Crear y configurar la nueva partida
             models.Game game = new models.Game();
             game.setFinished(true);
-            game.setStartTime(LocalDateTime.now().minusMinutes(30)); // Ejemplo: partida duró 30 mins
+            game.setStartTime(Game.getStartTime());
             game.setEndTime(LocalDateTime.now());
             game.setWinner(isWinner ? currentPlayer : opponentPlayer);
             game.setWasAbandoned(wasAbandoned);

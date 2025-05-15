@@ -1,5 +1,7 @@
 package edu.asu.stratego.game;
 
+import java.time.LocalDateTime;
+
 import edu.asu.stratego.game.board.ClientBoard;
 import edu.asu.stratego.game.pieces.PieceColor;
 import jakarta.persistence.ManyToOne;
@@ -22,6 +24,8 @@ public class Game {
     private static GameStatus status;
     private static PieceColor turn;
     private static ClientBoard board;
+    private static LocalDateTime startTime;
+
     @ManyToOne
     private Player currentPlayer;
 
@@ -145,6 +149,14 @@ public class Game {
 
     public void setCurrentPlayer(Player player) {
         this.currentPlayer = player;
+    }
+
+    public static void setStartTime(LocalDateTime start) {
+        startTime = start;
+    }
+
+    public static LocalDateTime getStartTime() {
+        return startTime;
     }
 
     /**

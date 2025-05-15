@@ -12,14 +12,14 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.image.ImageView;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
-import javafx.scene.layout.HBox;
+import models.Player;
 import services.GameService;
 import services.PlayerService;
-import models.Player;
 
 import java.time.Duration;
 import java.time.format.DateTimeFormatter;
@@ -32,7 +32,15 @@ public class HistoryScene implements LanguageObserver {
     private VBox gamesContainer = new VBox(15);
     private Label titleLabel = new Label();
     private Button backButton = new Button();
+
+    private Button prevButton = new Button("« " + ResourceBundleManager.get("menu.previous"));
+    private Button nextButton = new Button(ResourceBundleManager.get("menu.next") + " »");
+
     private static final int SIDE = ClientStage.getSide();
+
+    private List<models.Game> games;
+    private int currentPage = 0;
+    private static final int PAGE_SIZE = 4;
 
     public HistoryScene(Runnable onBack) {
         LanguageObservable.addObserver(this);
@@ -42,7 +50,11 @@ public class HistoryScene implements LanguageObserver {
         gamesContainer.setAlignment(Pos.CENTER);
         gamesContainer.setPadding(new Insets(10));
 
-        VBox historyBox = new VBox(20, titleLabel, gamesContainer, backButton);
+        // Layout con botones de navegación
+        HBox navButtons = new HBox(20, prevButton, nextButton);
+        navButtons.setAlignment(Pos.CENTER);
+
+        VBox historyBox = new VBox(20, titleLabel, gamesContainer, navButtons, backButton);
         historyBox.setAlignment(Pos.CENTER);
 
         ImageView logoImage = new ImageView(ImageConstants.stratego_logo);
@@ -64,8 +76,22 @@ public class HistoryScene implements LanguageObserver {
 
         backButton.setOnAction(e -> onBack.run());
 
+        prevButton.setOnAction(e -> {
+            if (currentPage > 0) {
+                currentPage--;
+                showPage(currentPage);
+            }
+        });
+
+        nextButton.setOnAction(e -> {
+            if ((currentPage + 1) * PAGE_SIZE < games.size()) {
+                currentPage++;
+                showPage(currentPage);
+            }
+        });
+
         updateTexts();
-        loadGamesHistory(); // Cargar historial al construir la escena
+        loadGamesHistory();
     }
 
     @Override
@@ -76,6 +102,8 @@ public class HistoryScene implements LanguageObserver {
     private void updateTexts() {
         titleLabel.setText(ResourceBundleManager.get("menu.history"));
         backButton.setText(ResourceBundleManager.get("menu.back"));
+        prevButton.setText("« " + ResourceBundleManager.get("menu.previous"));
+        nextButton.setText(ResourceBundleManager.get("menu.next") + " »");
     }
 
     public Scene getScene() {
@@ -92,22 +120,38 @@ public class HistoryScene implements LanguageObserver {
         if (dbPlayer == null)
             return;
 
-        List<models.Game> games = gameService.findGamesByPlayerNickname(nickname);
+        games = gameService.findGamesByPlayerNickname(nickname);
+
+        currentPage = 0;
 
         Platform.runLater(() -> {
-            gamesContainer.getChildren().clear();
-
             if (games.isEmpty()) {
+                gamesContainer.getChildren().clear();
                 Label noGamesLabel = new Label(ResourceBundleManager.get("history.nogames"));
                 noGamesLabel.setStyle("-fx-font-size: 16px; -fx-text-fill: white;");
                 gamesContainer.getChildren().add(noGamesLabel);
-                return;
-            }
-
-            for (models.Game game : games) {
-                gamesContainer.getChildren().add(createGameCard(game, dbPlayer));
+                prevButton.setDisable(true);
+                nextButton.setDisable(true);
+            } else {
+                showPage(currentPage);
             }
         });
+    }
+
+    private void showPage(int page) {
+        gamesContainer.getChildren().clear();
+
+        int start = page * PAGE_SIZE;
+        int end = Math.min(start + PAGE_SIZE, games.size());
+
+        Player dbPlayer = new PlayerService().findByNickname(Game.getPlayer().getNickname());
+
+        for (int i = start; i < end; i++) {
+            gamesContainer.getChildren().add(createGameCard(games.get(i), dbPlayer));
+        }
+
+        prevButton.setDisable(page == 0);
+        nextButton.setDisable(end >= games.size());
     }
 
     private HBox createGameCard(models.Game game, Player player) {
@@ -116,17 +160,15 @@ public class HistoryScene implements LanguageObserver {
         card.setAlignment(Pos.CENTER_LEFT);
         card.setMaxWidth(SIDE * 0.8);
 
-        // Fecha
         Label dateLabel = new Label(
                 game.getEndTime().format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)));
         dateLabel.setFont(Font.font(14));
         dateLabel.setTextFill(Color.WHITE);
 
-        // Resultado
         Label resultLabel = new Label();
         resultLabel.setFont(Font.font(16));
         if (game.isWasAbandoned()) {
-            resultLabel.setText(ResourceBundleManager.get("history.abandoned")); // 🔁 Traducible
+            resultLabel.setText(ResourceBundleManager.get("history.abandoned"));
             resultLabel.setTextFill(Color.GOLD);
         } else if (game.getWinner() == null) {
             resultLabel.setText(ResourceBundleManager.get("history.finished"));
@@ -139,9 +181,20 @@ public class HistoryScene implements LanguageObserver {
             resultLabel.setTextFill(Color.INDIANRED);
         }
 
-        // Duración
-        long minutes = Duration.between(game.getStartTime(), game.getEndTime()).toMinutes();
-        Label durationLabel = new Label(minutes + " " + ResourceBundleManager.get("history.minutes"));
+        Duration duration = Duration.between(game.getStartTime(), game.getEndTime());
+        long minutes = duration.toMinutes();
+        long seconds = duration.minusMinutes(minutes).getSeconds();
+
+        String durationStr;
+        if (minutes > 0) {
+            durationStr = String.format("%d %s %d %s",
+                    minutes, ResourceBundleManager.get("history.minutes"),
+                    seconds, ResourceBundleManager.get("history.seconds"));
+        } else {
+            durationStr = String.format("%d %s", seconds, ResourceBundleManager.get("history.seconds"));
+        }
+
+        Label durationLabel = new Label(durationStr);
         durationLabel.setFont(Font.font(14));
         durationLabel.setTextFill(Color.LIGHTGRAY);
 
