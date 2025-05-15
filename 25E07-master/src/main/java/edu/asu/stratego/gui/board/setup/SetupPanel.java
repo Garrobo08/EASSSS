@@ -486,4 +486,5 @@ public class SetupPanel implements LanguageObserver {
         instructions.setText(ResourceBundleManager.get("setup.instructions"));
         readyLabel.setText(ResourceBundleManager.get("waiting.message"));
     }
+
 }

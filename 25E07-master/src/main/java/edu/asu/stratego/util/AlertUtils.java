@@ -5,6 +5,7 @@ import java.util.Optional;
 import javafx.application.Platform;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonBar.ButtonData;
 import javafx.scene.control.ButtonType;
 
 public class AlertUtils {
@@ -55,6 +56,30 @@ public class AlertUtils {
             alert.setHeaderText(header);
             alert.setContentText(content);
             alert.showAndWait();
+        });
+    }
+
+    public static void showGameEndAlert(String title, String header, String content,
+            Runnable onPlayAgain, Runnable onExit) {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            alert.setTitle(title);
+            alert.setHeaderText(header);
+            alert.setContentText(content);
+
+            ButtonType playAgainButton = new ButtonType("Jugar otra vez", ButtonData.YES);
+            ButtonType exitButton = new ButtonType("Salir", ButtonData.NO);
+
+            alert.getButtonTypes().setAll(playAgainButton, exitButton);
+
+            Optional<ButtonType> result = alert.showAndWait();
+            if (result.isPresent()) {
+                if (result.get() == playAgainButton) {
+                    onPlayAgain.run();
+                } else {
+                    onExit.run();
+                }
+            }
         });
     }
 

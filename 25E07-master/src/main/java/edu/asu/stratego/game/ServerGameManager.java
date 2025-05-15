@@ -93,12 +93,26 @@ public class ServerGameManager implements Runnable {
      */
     private void createIOStreams() {
         try {
+            if (socketOne.isClosed() || socketTwo.isClosed()) {
+                logger.log(Level.SEVERE, "Sockets are closed, cannot create streams.");
+                return;
+            }
             // NOTE: ObjectOutputStreams must be constructed before the
             // ObjectInputStreams so as to prevent a remote deadlock
-            toPlayerOne = new ObjectOutputStream(socketOne.getOutputStream());
-            fromPlayerOne = new ObjectInputStream(socketOne.getInputStream());
-            toPlayerTwo = new ObjectOutputStream(socketTwo.getOutputStream());
-            fromPlayerTwo = new ObjectInputStream(socketTwo.getInputStream());
+            if (toPlayerOne == null) {
+                toPlayerOne = new ObjectOutputStream(socketOne.getOutputStream());
+                toPlayerOne.flush();
+            }
+            if (fromPlayerOne == null) {
+                fromPlayerOne = new ObjectInputStream(socketOne.getInputStream());
+            }
+            if (toPlayerTwo == null) {
+                toPlayerTwo = new ObjectOutputStream(socketTwo.getOutputStream());
+                toPlayerTwo.flush();
+            }
+            if (fromPlayerTwo == null) {
+                fromPlayerTwo = new ObjectInputStream(socketTwo.getInputStream());
+            }
         } catch (IOException e) {
             logger.log(Level.SEVERE, "Error establishing communication streams.", e);
             // Clean up resources if streams or sockets were created before the exception
@@ -137,6 +151,10 @@ public class ServerGameManager implements Runnable {
      */
     private void exchangePlayers() {
         try {
+            if (fromPlayerOne == null || fromPlayerTwo == null) {
+                logger.log(Level.SEVERE, "Input streams are null. Cannot exchange players.");
+                return;
+            }
             playerOne = (Player) fromPlayerOne.readObject();
             playerTwo = (Player) fromPlayerTwo.readObject();
 

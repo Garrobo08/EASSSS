@@ -126,7 +126,10 @@ public class ClientGameManager implements Runnable {
                 toServer.close();
                 toServer = null;
             }
-            ClientSocket.getInstance().close();
+            if (ClientSocket.getInstance() != null && !ClientSocket.getInstance().isClosed()) {
+                ClientSocket.getInstance().close(); // Cerrar el socket por completo
+                ClientSocket.setInstance(null); // Eliminar la referencia estática
+            }
         } catch (IOException e) {
             logger.log(Level.WARNING, "Error al cerrar conexión existente", e);
         }
@@ -149,29 +152,45 @@ public class ClientGameManager implements Runnable {
         });
 
         try {
-            // I/O Streams.
+            if (ClientSocket.getInstance() != null && !ClientSocket.getInstance().isClosed()) {
+                ClientSocket.getInstance().close();
+                ClientSocket.setInstance(null);
+            }
+            ClientSocket.connect(Game.getPlayer().getServerIP(), 4212);
+
+            // I/O Streams
             toServer = new ObjectOutputStream(ClientSocket.getInstance().getOutputStream());
             fromServer = new ObjectInputStream(ClientSocket.getInstance().getInputStream());
 
-            // Exchange player information.
+            Game.getPlayer().setColor(null);
+            Game.setOpponent(null);
+            Game.setStatus(GameStatus.SETTING_UP); // 🔄 Establecemos el estado inicial
+            Game.setTurn(PieceColor.RED); // 🔄 Turno por defecto
+            Game.setMove(new Move()); // ✅ Aquí inicializamos el objeto
+            Game.setMoveStatus(MoveStatus.OPP_TURN); // 🔄 Establecemos el estado inicial
+
+            // Intercambio de información con el servidor
             toServer.writeObject(Game.getPlayer());
             Game.setOpponent((Player) fromServer.readObject());
 
-            // Infer player color from opponent color.
+            // Inferir el color del jugador
             if (Game.getOpponent().getColor() == PieceColor.RED)
                 Game.getPlayer().setColor(PieceColor.BLUE);
             else
                 Game.getPlayer().setColor(PieceColor.RED);
+
         } catch (IOException | ClassNotFoundException e) {
             logger.log(Level.SEVERE, "Error occurred during opponent communication", e);
-            // Show the error message in the interface
             Platform.runLater(() -> {
                 AlertUtils.showRetryAlert(
                         "Communication problem",
                         "Communication problem with the opponent",
                         "The opponent's information could not be received. Do you want to try again?",
                         this::connectToServer,
-                        Platform::exit);
+                        () -> {
+                            closeExistingConnection();
+                            showMainMenu();
+                        });
             });
         }
     }
@@ -312,18 +331,18 @@ public class ClientGameManager implements Runnable {
         while (Game.getStatus() == GameStatus.IN_PROGRESS) {
 
             try {
+                logger.info("Current game status: " + Game.getStatus() +
+                        ", Player color: " + Game.getPlayer().getColor() +
+                        ", Turn: " + Game.getTurn());
+
                 handleTurn();
+
                 // Verificar si el juego fue abandonado
                 if (Game.getStatus() == GameStatus.RED_DISCONNECTED ||
-                        Game.getStatus() == GameStatus.BLUE_DISCONNECTED || Game.getMove() == null) {
+                        Game.getStatus() == GameStatus.BLUE_DISCONNECTED ||
+                        Game.getMove() == null) {
                     logger.info("Game was abandoned, returning to main menu");
-                    Platform.runLater(() -> {
-                        // Limpiar la escena antes de volver al menú
-                        BoardScene.getRootPane().getChildren().clear();
-                        showMainMenu();
-                        // Reiniciar los streams por si acaso
-                        closeExistingConnection();
-                    });
+                    handleGameEnd();
                     return;
                 }
                 processAttackMove();
@@ -342,7 +361,39 @@ public class ClientGameManager implements Runnable {
             }
         }
 
+        logger.info("Game ended with status: " + Game.getStatus());
         revealAll();
+        handleGameEnd();
+    }
+
+    private void handleGameEnd() {
+        Platform.runLater(() -> {
+            String message = "";
+            if (Game.getStatus() == GameStatus.RED_CAPTURED ||
+                    Game.getStatus() == GameStatus.RED_NO_MOVES) {
+                message = (Game.getPlayer().getColor() == PieceColor.BLUE) ? "¡Has ganado!" : "Has perdido";
+            } else if (Game.getStatus() == GameStatus.BLUE_CAPTURED ||
+                    Game.getStatus() == GameStatus.BLUE_NO_MOVES) {
+                message = (Game.getPlayer().getColor() == PieceColor.RED) ? "¡Has ganado!" : "Has perdido";
+            } else if (Game.getStatus() == GameStatus.RED_DISCONNECTED ||
+                    Game.getStatus() == GameStatus.BLUE_DISCONNECTED) {
+                message = "El oponente ha abandonado la partida";
+            }
+
+            AlertUtils.showGameEndAlert(
+                    "Fin de la partida",
+                    message,
+                    "¿Quieres jugar otra partida?",
+                    () -> {
+                        closeExistingConnection(); // 🔥 Matamos el socket
+                        Game.resetGame(); // 🔄 Reiniciamos el estado del juego
+                        Platform.runLater(() -> showMainMenu()); // Volvemos al menú
+                    },
+                    Platform::exit);
+
+            // Limpiar la escena del juego
+            BoardScene.getRootPane().getChildren().clear();
+        });
     }
 
     private void addAbandonButton() {
