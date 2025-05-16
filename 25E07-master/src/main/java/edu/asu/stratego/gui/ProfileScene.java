@@ -12,6 +12,7 @@ import javafx.scene.control.Label;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import services.PlayerService;
 
 public class ProfileScene implements LanguageObserver {
 
@@ -57,6 +58,18 @@ public class ProfileScene implements LanguageObserver {
     }
 
     private void updateTexts() {
+        // 🔄 Recargar los datos desde la base de datos para asegurar que están
+        // actualizados
+        PlayerService service = new PlayerService();
+        models.Player updatedPlayer = service.findByEmail(Game.getPlayer().getEmail());
+        if (updatedPlayer != null) {
+            // Convert models.Player to edu.asu.stratego.game.Player
+            edu.asu.stratego.game.Player convertedPlayer = new edu.asu.stratego.game.Player();
+            convertedPlayer.setNickname(updatedPlayer.getNickname());
+            convertedPlayer.setEmail(updatedPlayer.getEmail());
+            convertedPlayer.setPoints(updatedPlayer.getPoints());
+            Game.setPlayer(convertedPlayer); // 👈 Actualizamos el objeto en memoria
+        }
         String nickname = Game.getPlayer().getNickname();
         String email = Game.getPlayer().getEmail();
         Integer points = Game.getPlayer().getPoints();
@@ -72,4 +85,3 @@ public class ProfileScene implements LanguageObserver {
         return scene;
     }
 }
-

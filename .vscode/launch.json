@@ -8,6 +8,17 @@
             "mainClass": "edu.asu.stratego.Server",
             "projectName": "stratego",
             "args": "",
+            "envFile": "${workspaceFolder}/.env",
+            "vmArgs": " -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=50872 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dspring.jmx.enabled=true -Djava.rmi.server.hostname=localhost -Dspring.application.admin.enabled=true -Dspring.boot.project.name=stratego"
+        },
+        {
+            "type": "java",
+            "name": "Spring Boot-Client<stratego>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "edu.asu.stratego.Client",
+            "projectName": "stratego",
+            "args": "",
             "envFile": "${workspaceFolder}/.env"
         }
     ]
